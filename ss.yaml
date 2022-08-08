@@ -29,7 +29,6 @@ spec:
         checksum/access-config: f060a01338716027fdd0793e58ea9d55a5e9e97bca24fe9442c69a8ab9cd31c1
         checksum/admin-creds: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
         checksum/binarystore: 1339e41ffe972a8346d08a0f8869e991fdfbd8757e701f96012c10fb087cf2c7
-        checksum/database-secrets: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
         checksum/systemyaml: 4b8c21ecfc99a62c38444136c1ecf9969a02f9a78d2b81fc77fde09f399bf1b9
       creationTimestamp: null
       labels:
