@@ -1,0 +1,268 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  annotations:
+    meta.helm.sh/release-name: jcr
+    meta.helm.sh/release-namespace: jcr
+  labels:
+    app: artifactory
+    app.kubernetes.io/managed-by: Helm
+    chart: artifactory-107.37.14
+    component: artifactory
+    heritage: Helm
+    release: jcr
+  name: jcr-artifactory
+  namespace: jcr
+spec:
+  podManagementPolicy: OrderedReady
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: artifactory
+      release: jcr
+      role: artifactory
+  serviceName: artifactory
+  template:
+    metadata:
+      annotations:
+        checksum/access-config: f060a01338716027fdd0793e58ea9d55a5e9e97bca24fe9442c69a8ab9cd31c1
+        checksum/admin-creds: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
+        checksum/binarystore: 1339e41ffe972a8346d08a0f8869e991fdfbd8757e701f96012c10fb087cf2c7
+        checksum/database-secrets: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
+        checksum/systemyaml: 4b8c21ecfc99a62c38444136c1ecf9969a02f9a78d2b81fc77fde09f399bf1b9
+      creationTimestamp: null
+      labels:
+        app: artifactory
+        chart: artifactory-107.37.14
+        component: artifactory
+        heritage: Helm
+        release: jcr
+        role: artifactory
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: artifactory
+                  release: jcr
+              topologyKey: kubernetes.io/hostname
+            weight: 100
+      containers:
+      - command:
+        - /bin/bash
+        - -c
+        - |
+          set -e; if [ -d /artifactory_extra_conf ] && [ -d /artifactory_bootstrap ]; then
+            echo "Copying bootstrap config from /artifactory_extra_conf to /artifactory_bootstrap";
+            cp -Lrfv /artifactory_extra_conf/ /artifactory_bootstrap/;
+          fi; exec /entrypoint-artifactory.sh
+        image: releases-docker.jfrog.io/jfrog/artifactory-jcr:7.37.14
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - curl -s -k --fail --max-time 1 http://localhost:8091/artifactory/api/v1/system/liveness
+          failureThreshold: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        name: artifactory
+        ports:
+        - containerPort: 8082
+          name: http
+          protocol: TCP
+        - containerPort: 8081
+          name: http-internal
+          protocol: TCP
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - NET_RAW
+          runAsNonRoot: true
+        startupProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - curl -s -k --fail --max-time 1 http://localhost:8091/artifactory/api/v1/system/readiness
+          failureThreshold: 90
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 5
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /var/opt/jfrog/artifactory
+          name: artifactory-volume
+        - mountPath: /artifactory_bootstrap/binarystore.xml
+          name: binarystore-xml
+          subPath: binarystore.xml
+        - mountPath: /artifactory_bootstrap/info/installer-info.json
+          name: installer-info
+          subPath: installer-info.json
+      dnsPolicy: ClusterFirst
+      initContainers:
+      - command:
+        - bash
+        - -c
+        - rm -fv /var/opt/jfrog/artifactory/etc/db.properties
+        image: releases-docker.jfrog.io/jfrog/ubi-minimal:8.5-204
+        imagePullPolicy: IfNotPresent
+        name: delete-db-properties
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: 10m
+            memory: 50Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - NET_RAW
+          runAsNonRoot: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /var/opt/jfrog/artifactory
+          name: artifactory-volume
+      - command:
+        - bash
+        - -c
+        - rm -rfv /var/opt/jfrog/artifactory/lost+found /var/opt/jfrog/artifactory/data/.lock
+        image: releases-docker.jfrog.io/jfrog/ubi-minimal:8.5-204
+        imagePullPolicy: IfNotPresent
+        name: remove-lost-found
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: 10m
+            memory: 50Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - NET_RAW
+          runAsNonRoot: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /var/opt/jfrog/artifactory
+          name: artifactory-volume
+      - command:
+        - /bin/bash
+        - -c
+        - |
+          if [[ -e "/var/opt/jfrog/artifactory/etc/filebeat.yaml" ]]; then chmod 644 /var/opt/jfrog/artifactory/etc/filebeat.yaml; fi; echo "Copy system.yaml to /var/opt/jfrog/artifactory/etc"; mkdir -p /var/opt/jfrog/artifactory/etc; mkdir -p /var/opt/jfrog/artifactory/etc/access/keys/trusted; cp -fv /tmp/etc/system.yaml /var/opt/jfrog/artifactory/etc/system.yaml; echo "Remove /var/opt/jfrog/artifactory/lost+found folder if exists"; rm -rfv /var/opt/jfrog/artifactory/lost+found; echo "Copy access.config.patch.yml to /var/opt/jfrog/artifactory/etc/access"; mkdir -p /var/opt/jfrog/artifactory/etc/access; cp -fv /tmp/etc/access.config.patch.yml /var/opt/jfrog/artifactory/etc/access/access.config.patch.yml;
+        image: releases-docker.jfrog.io/jfrog/ubi-minimal:8.5-204
+        imagePullPolicy: IfNotPresent
+        name: copy-system-yaml
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: 10m
+            memory: 50Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - NET_RAW
+          runAsNonRoot: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /var/opt/jfrog/artifactory
+          name: artifactory-volume
+        - mountPath: /tmp/etc/system.yaml
+          name: systemyaml
+          subPath: system.yaml
+        - mountPath: /tmp/etc/access.config.patch.yml
+          name: access-config
+          subPath: access.config.patch.yml
+      - command:
+        - /bin/bash
+        - -c
+        - |
+          scriptsPath="/opt/jfrog/artifactory/app/bin"; mkdir -p $scriptsPath; echo "Copy migration scripts and Run migration"; cp -fv /tmp/migrate.sh $scriptsPath/migrate.sh; cp -fv /tmp/migrationHelmInfo.yaml $scriptsPath/migrationHelmInfo.yaml; cp -fv /tmp/migrationStatus.sh $scriptsPath/migrationStatus.sh; mkdir -p /var/opt/jfrog/artifactory/log; bash $scriptsPath/migrationStatus.sh 7.37.14 3600 > >(tee /var/opt/jfrog/artifactory/log/helm-migration.log) 2>&1;
+        image: releases-docker.jfrog.io/jfrog/artifactory-jcr:7.37.14
+        imagePullPolicy: IfNotPresent
+        name: migration-artifactory
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - NET_RAW
+          runAsNonRoot: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /tmp/migrate.sh
+          name: migration-scripts
+          subPath: migrate.sh
+        - mountPath: /tmp/migrationHelmInfo.yaml
+          name: migration-scripts
+          subPath: migrationHelmInfo.yaml
+        - mountPath: /tmp/migrationStatus.sh
+          name: migration-scripts
+          subPath: migrationStatus.sh
+        - mountPath: /var/opt/jfrog/artifactory
+          name: artifactory-volume
+        - mountPath: /artifactory_bootstrap/binarystore.xml
+          name: binarystore-xml
+          subPath: binarystore.xml
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 1030
+        runAsUser: 1030
+      serviceAccount: default
+      serviceAccountName: default
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: binarystore-xml
+        secret:
+          defaultMode: 420
+          secretName: jcr-artifactory-binarystore
+      - configMap:
+          defaultMode: 420
+          name: jcr-artifactory-migration-scripts
+        name: migration-scripts
+      - configMap:
+          defaultMode: 420
+          name: jcr-artifactory-installer-info
+        name: installer-info
+      - name: systemyaml
+        secret:
+          defaultMode: 420
+          secretName: jcr-artifactory-systemyaml
+      - name: access-config
+        secret:
+          defaultMode: 420
+          secretName: jcr-artifactory-access-config
+  updateStrategy:
+    type: RollingUpdate
+  volumeClaimTemplates:
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      creationTimestamp: null
+      name: artifactory-volume
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 35Gi
+      volumeMode: Filesystem

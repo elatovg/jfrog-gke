@@ -1,0 +1,57 @@
+### update pvc
+# back up the current sts
+k get statefulset -n jcr jcr-artifactory -o yaml | kubectl neat > ss.yaml
+# Then delete the statefulset without deleting the pvc
+k delete sts jcr-artifactory -n jcr --cascade=orphan
+# delete the pod
+k delete pod jcr-artifactory-0 -n jcr
+# update the pvc
+k edit pvc artifactory-volume-jcr-artifactory-0 -n jcr
+---
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+---
+# you should see the following in the logs
+jcr         26s         Normal   Resizing                   persistentvolumeclaim/artifactory-volume-jcr-artifactory-0   External resizer is resizing volume pvc-13e6112c-b41f-4c6a-a101-d39705c2bde6
+jcr         26s         Normal   ExternalExpanding          persistentvolumeclaim/artifactory-volume-jcr-artifactory-0   CSI migration enabled for kubernetes.io/gce-pd; waiting for external resizer to expand the pvc
+jcr         22s         Normal   FileSystemResizeRequired   persistentvolumeclaim/artifactory-volume-jcr-artifactory-0   Require file system resize of volume on node
+# also if you describe the pvc you will see the following note
+> k describe pvc artifactory-volume-jcr-artifactory-0 -n jcr
+Name:          artifactory-volume-jcr-artifactory-0
+Namespace:     jcr
+StorageClass:  standard
+Status:        Bound
+Volume:        pvc-13e6112c-b41f-4c6a-a101-d39705c2bde6
+Labels:        app=artifactory
+               release=jcr
+               role=artifactory
+Annotations:   pv.kubernetes.io/bind-completed: yes
+               pv.kubernetes.io/bound-by-controller: yes
+               volume.beta.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+               volume.kubernetes.io/storage-resizer: pd.csi.storage.gke.io
+Finalizers:    [kubernetes.io/pvc-protection]
+Capacity:      35Gi
+Access Modes:  RWO
+VolumeMode:    Filesystem
+Used By:       <none>
+Conditions:
+  Type                      Status  LastProbeTime                     LastTransitionTime                Reason  Message
+  ----                      ------  -----------------                 ------------------                ------  -------
+  FileSystemResizePending   True    Mon, 01 Jan 0001 00:00:00 +0000   Mon, 08 Aug 2022 11:24:45 -0400           Waiting for user to (re-)start a pod to finish file system resize of volume on node.
+Events:
+  Type    Reason                    Age                  From                                    Message
+  ----    ------                    ----                 ----                                    -------
+  Normal  ExternalExpanding         2m26s (x2 over 13d)  volume_expand                           CSI migration enabled for kubernetes.io/gce-pd; waiting for external resizer to expand the pvc
+  Normal  Resizing                  2m26s (x2 over 13d)  external-resizer pd.csi.storage.gke.io  External resizer is resizing volume pvc-13e6112c-b41f-4c6a-a101-d39705c2bde6
+  Normal  FileSystemResizeRequired  2m22s (x2 over 13d)  external-resizer pd.csi.storage.gke.io  Require file system resize of volume on node
+# then reapply the sts
+> k apply -f ss.yaml
+statefulset.apps/jcr-artifactory configured
+# and the new size should show up
+> k get pvc -n jcr
+NAME                                   STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+artifactory-volume-jcr-artifactory-0   Bound    pvc-13e6112c-b41f-4c6a-a101-d39705c2bde6   100Gi      RWO            standard       51d
